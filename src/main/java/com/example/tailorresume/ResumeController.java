@@ -1,9 +1,11 @@
 package com.example.tailorresume;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -22,17 +24,31 @@ public class ResumeController {
     private final ResumeTextExtractor textExtractor;
     private final DocxTemplateService docxTemplateService;
     private final OllamaTailoringService tailoringService;
+    private final OpenAiTailoringService openAiTailoringService;
     private final ResumePdfService pdfService;
+    private final String defaultProvider;
 
     public ResumeController(
             ResumeTextExtractor textExtractor,
             DocxTemplateService docxTemplateService,
             OllamaTailoringService tailoringService,
-            ResumePdfService pdfService) {
+            OpenAiTailoringService openAiTailoringService,
+            ResumePdfService pdfService,
+            @Value("${tailoring.provider:ollama}") String defaultProvider) {
+        if (!defaultProvider.equals("ollama") && !defaultProvider.equals("openai")) {
+            throw new IllegalArgumentException("TAILORING_PROVIDER must be either ollama or openai.");
+        }
         this.textExtractor = textExtractor;
         this.docxTemplateService = docxTemplateService;
         this.tailoringService = tailoringService;
+        this.openAiTailoringService = openAiTailoringService;
         this.pdfService = pdfService;
+        this.defaultProvider = defaultProvider;
+    }
+
+    @GetMapping("/settings")
+    public AppSettings settings() {
+        return new AppSettings(defaultProvider);
     }
 
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -43,13 +59,32 @@ public class ResumeController {
     @PostMapping(value = "/tailor", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<TailoredResume> tailor(
             @RequestParam("resume") MultipartFile resume,
-            @RequestParam("jobDescription") String jobDescription) throws IOException {
+            @RequestParam("jobDescription") String jobDescription,
+            @RequestParam(value = "provider", required = false) String provider,
+            @RequestParam(value = "apiKey", required = false) String apiKey) throws IOException {
         String resumeText = textExtractor.extract(resume);
         validateText(resumeText, jobDescription);
+        String selectedProvider = provider == null ? defaultProvider : provider;
+        AbstractResumeTailoringService selectedService;
+        if (selectedProvider.equals("openai")) {
+            if (apiKey == null || apiKey.isBlank()) {
+                throw new IllegalArgumentException("Enter your OpenAI API key in AI settings before tailoring.");
+            }
+            if (apiKey.length() > 512) {
+                throw new IllegalArgumentException("The OpenAI API key is too long.");
+            }
+            selectedService = openAiTailoringService;
+        } else if (selectedProvider.equals("ollama")) {
+            selectedService = tailoringService;
+            apiKey = null;
+        } else {
+            throw new IllegalArgumentException("Choose a supported AI provider in AI settings.");
+        }
         String promptText = isDocx(resume)
                 ? docxTemplateService.createTaggedPromptText(resume.getBytes())
                 : docxTemplateService.createTaggedPlainText(resumeText);
-        String edits = tailoringService.tailorResume(promptText, jobDescription);
+        String edits = selectedService.tailorResume(
+                promptText, jobDescription, apiKey == null ? null : apiKey.trim());
         String preview = isDocx(resume)
                 ? docxTemplateService.extractText(docxTemplateService.applyEdits(resume.getBytes(), edits))
                 : docxTemplateService.applyPlainTextEdits(resumeText, edits);
@@ -97,6 +132,9 @@ public class ResumeController {
     }
 
     public record ResumePreview(String fileName, String text) {
+    }
+
+    public record AppSettings(String defaultProvider) {
     }
 
     public record TailoredResume(String preview, String edits) {

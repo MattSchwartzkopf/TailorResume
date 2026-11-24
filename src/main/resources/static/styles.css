@@ -15,8 +15,17 @@ body { margin: 0; background: var(--paper); color: var(--ink); }
 .brand { display: inline-flex; gap: 9px; align-items: center; color: var(--ink); text-decoration: none; font-size: 19px; font-weight: 700; letter-spacing: -.8px; }
 .brand-mark { width: 27px; height: 27px; display: grid; place-items: center; background: var(--green); color: white; border-radius: 8px; font-family: Georgia, serif; font-size: 21px; font-style: italic; }
 .brand-period { color: #a4a879; }
+.topbar-actions { display: flex; align-items: center; gap: 20px; }
 .local-badge { color: #596156; font-size: 12px; display: flex; align-items: center; gap: 8px; }
-.local-badge span { width: 7px; height: 7px; border-radius: 50%; background: #64a275; box-shadow: 0 0 0 3px #e0eadf; }
+.local-badge > span:first-child { width: 7px; height: 7px; border-radius: 50%; background: #64a275; box-shadow: 0 0 0 3px #e0eadf; }
+.settings-menu { position: relative; font-size: 11px; }
+.settings-menu summary { list-style: none; cursor: pointer; color: var(--green); border: 1px solid #bac6b9; border-radius: 6px; padding: 8px 10px; }
+.settings-menu summary::-webkit-details-marker { display: none; }
+.settings-panel { position: absolute; z-index: 3; right: 0; top: calc(100% + 8px); width: min(300px, calc(100vw - 32px)); padding: 15px; background: var(--white); border: 1px solid var(--line); border-radius: 9px; box-shadow: 0 12px 30px #2428201a; }
+.settings-panel label { display: block; font-size: 11px; font-weight: 600; margin-bottom: 7px; }
+.settings-panel select, .settings-panel input { width: 100%; height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 0 9px; color: var(--ink); background: white; font: 11px "Trebuchet MS", sans-serif; }
+.settings-panel input { margin-top: 12px; }
+.settings-panel p { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
 main { max-width: 1180px; margin: auto; padding: 63px 30px 60px; }
 .intro { text-align: center; max-width: 570px; margin: 0 auto 38px; }
 .eyebrow { font: 500 10px "Courier New", monospace; letter-spacing: 1.65px; color: #7d8277; margin: 0 0 13px; }

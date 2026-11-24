@@ -161,6 +161,45 @@ class ResumeServicesTests {
     }
 
     @Test
+    void sendsOpenAiRequestsWithUserKeyAndReturnsStructuredParagraphEdits() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        AtomicInteger requestCount = new AtomicInteger();
+        List<String> authorizationHeaders = new ArrayList<>();
+        List<String> requests = new ArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            authorizationHeaders.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            requests.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            requestCount.incrementAndGet();
+            byte[] response = mapper.writeValueAsBytes(Map.of(
+                    "choices", List.of(Map.of("message", Map.of(
+                            "content", "{\"paragraphs\":[{\"id\":1,\"text\":\"Tailored experience\"}]}")))));
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            try (var body = exchange.getResponseBody()) {
+                body.write(response);
+            }
+        });
+        server.start();
+        try {
+            OpenAiTailoringService service = new OpenAiTailoringService(
+                    mapper, "http://127.0.0.1:" + server.getAddress().getPort() + "/v1", "test-model");
+            String tailored = service.tailorResume(
+                    "[[P0000]] Candidate\n[[P0001]] Original experience", "Job description", "test-api-key");
+
+            assertThat(requestCount).hasValue(1);
+            assertThat(authorizationHeaders).containsExactly("Bearer test-api-key");
+            assertThat(requests.get(0))
+                    .contains("\"model\":\"test-model\"", "\"response_format\":{\"type\":\"json_object\"}",
+                            "Original experience", "Job description")
+                    .doesNotContain("test-api-key");
+            assertThat(tailored).isEqualTo("[[P0001]] Tailored experience\n");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void editsNarrativeWithoutChangingHeadingsOrParagraphAndFontStyles() throws Exception {
         byte[] source;
         try (XWPFDocument document = new XWPFDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {

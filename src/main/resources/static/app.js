@@ -10,6 +10,10 @@ const originalCaption = document.querySelector("#original-caption");
 const tailoredCaption = document.querySelector("#tailored-caption");
 const downloadButton = document.querySelector("#download-button");
 const toast = document.querySelector("#toast");
+const providerSelect = document.querySelector("#ai-provider");
+const apiKeySettings = document.querySelector("#api-key-settings");
+const apiKeyInput = document.querySelector("#openai-api-key");
+const providerStatus = document.querySelector("#provider-status");
 
 let resumeText = "";
 let tailoredResume = "";
@@ -24,15 +28,50 @@ function showToast(message) {
 }
 
 function updateReadyState() {
-  tailorButton.disabled = !fileInput.files[0] || !jobDescription.value.trim() || !resumeText;
+  const missingApiKey = providerSelect.value === "openai" && !apiKeyInput.value.trim();
+  tailorButton.disabled = !fileInput.files[0] || !jobDescription.value.trim() || !resumeText || missingApiKey;
 }
 
 function setBusy(isBusy) {
   fileInput.disabled = isBusy;
   jobDescription.disabled = isBusy;
-  tailorButton.disabled = isBusy || !resumeText || !jobDescription.value.trim();
+  providerSelect.disabled = isBusy;
+  apiKeyInput.disabled = isBusy;
+  tailorButton.disabled = isBusy || !resumeText || !jobDescription.value.trim()
+    || (providerSelect.value === "openai" && !apiKeyInput.value.trim());
   buttonLabel.textContent = isBusy ? "Tailoring your resume…" : "Tailor my resume";
 }
+
+function updateProviderSettings() {
+  const usesOpenAi = providerSelect.value === "openai";
+  apiKeySettings.hidden = !usesOpenAi;
+  providerStatus.textContent = usesOpenAi ? "OpenAI API" : "Local AI";
+  updateReadyState();
+}
+
+providerSelect.addEventListener("change", () => {
+  if (tailoredResume) {
+    tailoredResume = "";
+    tailoredText.textContent = "The AI provider changed. Tailor the resume again before exporting.";
+    tailoredText.classList.add("empty");
+    tailoredCaption.textContent = "Needs tailoring";
+    downloadButton.disabled = true;
+  }
+  updateProviderSettings();
+});
+apiKeyInput.addEventListener("input", updateReadyState);
+
+async function loadAppSettings() {
+  const response = await fetch("/api/settings");
+  if (!response.ok) throw new Error(await errorMessage(response));
+  const settings = await response.json();
+  if (settings.defaultProvider === "ollama" || settings.defaultProvider === "openai") {
+    providerSelect.value = settings.defaultProvider;
+  }
+  updateProviderSettings();
+}
+
+loadAppSettings().catch((error) => showToast(`Could not load AI settings: ${error.message}`));
 
 jobDescription.addEventListener("input", () => {
   document.querySelector("#description-count").textContent = `${jobDescription.value.length.toLocaleString()} / 30,000`;
@@ -127,7 +166,8 @@ form.addEventListener("submit", async (event) => {
   tailoredResume = "";
   tailoredText.textContent = "";
   tailoredText.classList.remove("empty");
-  tailoredCaption.textContent = "Working with your local AI…";
+  const usesOpenAi = providerSelect.value === "openai";
+  tailoredCaption.textContent = usesOpenAi ? "Working with OpenAI…" : "Working with your local AI…";
   downloadButton.disabled = true;
   setBusy(true);
   let tailoringSucceeded = false;
@@ -135,13 +175,15 @@ form.addEventListener("submit", async (event) => {
   const body = new FormData();
   body.append("resume", file);
   body.append("jobDescription", jobDescription.value.trim());
+  body.append("provider", providerSelect.value);
+  if (usesOpenAi) body.append("apiKey", apiKeyInput.value.trim());
   try {
     const response = await fetch("/api/tailor", { method: "POST", body });
     if (!response.ok) throw new Error(await errorMessage(response));
     const result = await response.json();
     tailoredResume = result.edits || "";
     if (!tailoredResume.trim() || !result.preview?.trim()) {
-      throw new Error("The local AI returned an empty resume. Check that the selected Ollama model is available.");
+      throw new Error("The AI provider returned an empty resume. Please try again.");
     }
     tailoredText.textContent = result.preview;
     tailoredText.classList.remove("empty");

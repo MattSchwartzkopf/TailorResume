@@ -13,14 +13,32 @@
       <span class="brand-mark">t</span>
       <span>tailor<span class="brand-period">.</span></span>
     </a>
-    <div class="local-badge"><span></span> Private and local</div>
+    <div class="topbar-actions">
+      <div class="local-badge"><span></span><span id="provider-status">Local AI</span></div>
+      <details class="settings-menu">
+        <summary aria-label="AI settings">AI settings <span aria-hidden="true">⌄</span></summary>
+        <div class="settings-panel">
+          <label for="ai-provider">AI provider</label>
+          <select id="ai-provider">
+            <option value="ollama">Ollama · local</option>
+            <option value="openai">OpenAI API · online</option>
+          </select>
+          <div id="api-key-settings" hidden>
+            <label for="openai-api-key">OpenAI API key</label>
+            <input id="openai-api-key" type="password" autocomplete="off" spellcheck="false"
+                   placeholder="sk-…" maxlength="512">
+            <p>Your API key is sent with tailoring requests and is not saved by this app. Use HTTPS on hosted sites. API usage is billed separately from ChatGPT.</p>
+          </div>
+        </div>
+      </details>
+    </div>
   </header>
 
   <main>
     <section class="intro">
       <p class="eyebrow">YOUR EXPERIENCE, THEIR OPPORTUNITY</p>
       <h1>A resume that fits<br>the <span>next opportunity.</span></h1>
-      <p class="intro-copy">Bring your resume and a job description. Your local AI will help you put your most relevant experience forward.</p>
+      <p class="intro-copy">Bring your resume and a job description. Choose local AI or use your own OpenAI API key to put your most relevant experience forward.</p>
     </section>
 
     <form id="tailor-form">
@@ -63,7 +81,7 @@
           <pre class="resume-text empty" id="tailored-text">Your tailored version will take shape here.</pre>
         </article>
       </div>
-      <p class="privacy-note"><span aria-hidden="true">◈</span> Upload the original DOCX to preserve its layout in the PDF export. PDF and TXT files can be tailored, but their design cannot be safely edited in place. On first macOS launch, LibreOffice setup begins automatically in the background. Review the tailored version for accuracy before applying.</p>
+      <p class="privacy-note"><span aria-hidden="true">◈</span> When using OpenAI, your resume and job description are sent to OpenAI using your API key. Upload the original DOCX to preserve its layout in the PDF export. PDF and TXT files can be tailored, but their design cannot be safely edited in place. Review the tailored version for accuracy before applying.</p>
     </section>
   </main>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
