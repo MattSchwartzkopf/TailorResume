@@ -42,7 +42,7 @@ public class ResumePdfService {
                         .start();
             } catch (IOException exception) {
                 throw new IllegalStateException(
-                        "To export a formatted DOCX resume as PDF, install LibreOffice and ensure 'soffice' is on PATH.", exception);
+                        "To export a formatted DOCX resume as PDF, install LibreOffice or set LIBREOFFICE_EXECUTABLE.", exception);
             }
             if (!process.waitFor(90, TimeUnit.SECONDS)) {
                 process.destroyForcibly();

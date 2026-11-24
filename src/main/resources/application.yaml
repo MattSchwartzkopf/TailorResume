@@ -1,3 +1,15 @@
 spring:
   application:
     name: Tailor Resume
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  mvc:
+    async:
+      request-timeout: 600000
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+ollama:
+  base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  model: ${OLLAMA_MODEL:llama3.1}

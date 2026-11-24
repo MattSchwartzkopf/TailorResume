@@ -65,6 +65,32 @@ class ResumeServicesTests {
     }
 
     @Test
+    void discoversWindowsLibreOfficeInStandardInstallationDirectory() throws Exception {
+        Path userHome = Files.createTempDirectory("tailor-resume-windows-home-");
+        Path programFiles = Files.createTempDirectory("tailor-resume-program-files-");
+        Path executable = programFiles.resolve("LibreOffice 26.8/program/soffice.exe");
+        try {
+            Files.createDirectories(executable.getParent());
+            Files.createFile(executable);
+            LibreOfficeManager manager = new LibreOfficeManager(
+                    "soffice", "Windows 11", null, userHome.toString(), programFiles.toString(), null, null);
+
+            assertThat(manager.resolveExecutable()).isEqualTo(executable.toString());
+        } finally {
+            deleteTestDirectory(userHome);
+            deleteTestDirectory(programFiles);
+        }
+    }
+
+    @Test
+    void mapsWindowsArchitecturesToLibreOfficeDownloadNames() {
+        assertThat(LibreOfficeManager.windowsArchitecture("amd64")).isEqualTo("x86_64");
+        assertThat(LibreOfficeManager.windowsArchitecture("aarch64")).isEqualTo("aarch64");
+        assertThat(LibreOfficeManager.windowsArchitecture("x86")).isEqualTo("x86");
+        assertThat(LibreOfficeManager.windowsArchitecture("mips")).isNull();
+    }
+
+    @Test
     void convertsStructuredAiEditsToOriginalParagraphIds() throws Exception {
         OllamaTailoringService service = new OllamaTailoringService(
                 new ObjectMapper(), "http://localhost:11434", "test-model");
@@ -302,5 +328,15 @@ class ResumeServicesTests {
 
     private String longNarrative(String beginning) {
         return beginning + " supported a range of successful projects with measurable results. ".repeat(4);
+    }
+
+    private void deleteTestDirectory(Path directory) throws Exception {
+        if (Files.exists(directory)) {
+            try (var files = Files.walk(directory)) {
+                for (Path path : files.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                    Files.deleteIfExists(path);
+                }
+            }
+        }
     }
 }

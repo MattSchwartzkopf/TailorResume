@@ -1,5 +1,6 @@
 package com.example.tailorresume;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -26,16 +27,38 @@ public class LibreOfficeManager {
     private static final URI STABLE_RELEASES = URI.create("https://download.documentfoundation.org/libreoffice/stable/");
     private static final Pattern RELEASE_LINK = Pattern.compile("href=\"(\\d+\\.\\d+\\.\\d+)/\"");
     private static final long MINIMUM_DMG_BYTES = 100_000_000;
+    private static final long MINIMUM_MSI_BYTES = 200_000_000;
 
     private final String configuredExecutable;
+    private final String operatingSystem;
+    private final String pathValue;
+    private final String userHome;
+    private final String programFiles;
+    private final String programFilesX86;
+    private final String localAppData;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(30))
             .build();
 
+    @Autowired
     public LibreOfficeManager(
             @Value("${libreoffice.executable:${LIBREOFFICE_EXECUTABLE:soffice}}") String configuredExecutable) {
+        this(configuredExecutable, System.getProperty("os.name"), System.getenv("PATH"),
+                System.getProperty("user.home"), System.getenv("ProgramFiles"),
+                System.getenv("ProgramFiles(x86)"), System.getenv("LOCALAPPDATA"));
+    }
+
+    LibreOfficeManager(
+            String configuredExecutable, String operatingSystem, String pathValue, String userHome,
+            String programFiles, String programFilesX86, String localAppData) {
         this.configuredExecutable = configuredExecutable;
+        this.operatingSystem = operatingSystem.toLowerCase(java.util.Locale.ROOT);
+        this.pathValue = pathValue;
+        this.userHome = userHome;
+        this.programFiles = programFiles;
+        this.programFilesX86 = programFilesX86;
+        this.localAppData = localAppData;
     }
 
     public synchronized String resolveExecutable() throws IOException {
@@ -50,32 +73,101 @@ public class LibreOfficeManager {
         if (discovered != null) {
             return discovered;
         }
-        if (!System.getProperty("os.name").toLowerCase().contains("mac")) {
-            throw new IllegalStateException(
-                    "LibreOffice is required for formatted PDF export. Install it locally and ensure 'soffice' is on PATH.");
+        if (isWindows()) {
+            return installForCurrentWindows();
         }
-        return installForCurrentMac();
+        if (isMac()) {
+            return installForCurrentMac();
+        }
+        throw new IllegalStateException("LibreOffice is required for formatted PDF export. Install it locally and ensure "
+                + executableName() + " is on PATH, or set LIBREOFFICE_EXECUTABLE.");
     }
 
-    private String findExecutable() {
-        String pathValue = System.getenv("PATH");
+    private String findExecutable() throws IOException {
         if (pathValue != null) {
             for (String directory : pathValue.split(java.io.File.pathSeparator)) {
-                Path executable = Path.of(directory, "soffice");
-                if (Files.isExecutable(executable)) {
-                    return executable.toAbsolutePath().toString();
+                for (String executableName : executableNames()) {
+                    Path executable = Path.of(directory, executableName);
+                    if (Files.isRegularFile(executable) && (isWindows() || Files.isExecutable(executable))) {
+                        return executable.toAbsolutePath().toString();
+                    }
                 }
             }
         }
-        for (Path executable : List.of(
-                Path.of("/Applications/LibreOffice.app/Contents/MacOS/soffice"),
-                Path.of(System.getProperty("user.home"), "Applications/LibreOffice.app/Contents/MacOS/soffice"),
-                installDirectory().resolve("LibreOffice.app/Contents/MacOS/soffice"))) {
-            if (Files.isExecutable(executable)) {
+        for (Path executable : installedExecutableCandidates()) {
+            if (Files.isRegularFile(executable) && (isWindows() || Files.isExecutable(executable))) {
                 return executable.toString();
             }
         }
         return null;
+    }
+
+    private List<Path> installedExecutableCandidates() throws IOException {
+        if (isWindows()) {
+            List<Path> candidates = new java.util.ArrayList<>();
+            addWindowsInstallCandidates(candidates, programFiles);
+            addWindowsInstallCandidates(candidates, programFilesX86);
+            if (localAppData != null && !localAppData.isBlank()) {
+                candidates.add(Path.of(localAppData, "Programs", "LibreOffice", "program", "soffice.exe"));
+            }
+            Path userInstall = windowsExecutableUnder(installDirectory().resolve("LibreOffice"));
+            if (userInstall != null) {
+                candidates.add(userInstall);
+            }
+            return candidates;
+        }
+        return List.of(
+                Path.of("/Applications/LibreOffice.app/Contents/MacOS/soffice"),
+                Path.of(userHome, "Applications/LibreOffice.app/Contents/MacOS/soffice"),
+                installDirectory().resolve("LibreOffice.app/Contents/MacOS/soffice"));
+    }
+
+    private void addWindowsInstallCandidates(List<Path> candidates, String baseDirectory) throws IOException {
+        if (baseDirectory == null || baseDirectory.isBlank()) {
+            return;
+        }
+        Path base = Path.of(baseDirectory);
+        candidates.add(base.resolve("LibreOffice/program/soffice.exe"));
+        if (!Files.isDirectory(base)) {
+            return;
+        }
+        try (Stream<Path> entries = Files.list(base)) {
+            entries.filter(Files::isDirectory)
+                    .filter(path -> path.getFileName().toString().toLowerCase(java.util.Locale.ROOT)
+                            .startsWith("libreoffice"))
+                    .map(path -> path.resolve("program/soffice.exe"))
+                    .forEach(candidates::add);
+        }
+    }
+
+    private Path windowsExecutableUnder(Path directory) throws IOException {
+        if (!Files.isDirectory(directory)) {
+            return null;
+        }
+        try (Stream<Path> files = Files.walk(directory)) {
+            return files
+                    .filter(path -> path.getFileName().toString().equalsIgnoreCase("soffice.exe"))
+                    .filter(path -> path.getParent() != null
+                            && path.getParent().getFileName().toString().equalsIgnoreCase("program"))
+                    .findFirst()
+                    .orElse(null);
+        }
+    }
+
+    private List<String> executableNames() {
+        return isWindows() ? List.of("soffice.exe", "soffice.com", "soffice") : List.of("soffice");
+    }
+
+    private String executableName() {
+        return isWindows() ? "soffice.exe" : "soffice";
+    }
+
+    private boolean isWindows() {
+        return operatingSystem.contains("windows");
+    }
+
+    private boolean isMac() {
+        return operatingSystem.contains("mac");
     }
 
     private String installForCurrentMac() throws IOException {
@@ -144,6 +236,85 @@ public class LibreOfficeManager {
             }
             deleteTree(temporaryDirectory);
         }
+    }
+
+    private String installForCurrentWindows() throws IOException {
+        String architecture = windowsArchitecture(System.getProperty("os.arch"));
+        if (architecture == null) {
+            throw new IllegalStateException(
+                    "Automatic LibreOffice setup does not support this Windows architecture: "
+                            + System.getProperty("os.arch"));
+        }
+
+        Path toolsDirectory = installDirectory();
+        Path installedDirectory = toolsDirectory.resolve("LibreOffice");
+        Path installedExecutable = windowsExecutableUnder(installedDirectory);
+        if (installedExecutable != null && Files.isRegularFile(installedExecutable)) {
+            return installedExecutable.toString();
+        }
+        Files.createDirectories(toolsDirectory);
+        Path temporaryDirectory = Files.createTempDirectory(toolsDirectory, "libreoffice-setup-");
+        Path extractedDirectory = temporaryDirectory.resolve("extracted");
+        Files.createDirectory(extractedDirectory);
+        try {
+            String version = latestStableVersion();
+            String filename = "LibreOffice_" + version + "_Win_" + architecture + ".msi";
+            URI downloadUri = URI.create("https://download.documentfoundation.org/libreoffice/stable/"
+                    + version + "/win/" + architecture + "/" + filename);
+            Path installer = temporaryDirectory.resolve(filename);
+            download(downloadingRequest(downloadUri), installer);
+            if (Files.size(installer) < MINIMUM_MSI_BYTES) {
+                throw new IOException("The LibreOffice download was incomplete or invalid.");
+            }
+            verifyWindowsInstallerSignature(installer, temporaryDirectory);
+
+            Path log = temporaryDirectory.resolve("extract.log");
+            runProcess(List.of("msiexec.exe", "/a", installer.toString(), "/qn",
+                            "TARGETDIR=" + extractedDirectory),
+                    log, Duration.ofMinutes(10),
+                    "Could not extract LibreOffice into the user's application data directory.");
+
+            Path extractedExecutable = windowsExecutableUnder(extractedDirectory);
+            if (extractedExecutable == null) {
+                throw new IOException("The LibreOffice installer did not contain its PDF converter executable.");
+            }
+            Path relativeExecutable = extractedDirectory.relativize(extractedExecutable);
+            if (Files.exists(installedDirectory)) {
+                deleteTree(installedDirectory);
+            }
+            try {
+                Files.move(extractedDirectory, installedDirectory, StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException exception) {
+                Files.move(extractedDirectory, installedDirectory);
+            }
+            Path executable = installedDirectory.resolve(relativeExecutable);
+            if (!Files.isRegularFile(executable)) {
+                throw new IOException("LibreOffice was extracted, but its PDF converter executable was not found.");
+            }
+            return executable.toString();
+        } finally {
+            deleteTree(temporaryDirectory);
+        }
+    }
+
+    static String windowsArchitecture(String architecture) {
+        return switch (architecture.toLowerCase(java.util.Locale.ROOT)) {
+            case "aarch64", "arm64" -> "aarch64";
+            case "x86_64", "amd64" -> "x86_64";
+            case "x86", "i386", "i486", "i586", "i686" -> "x86";
+            default -> null;
+        };
+    }
+
+    private void verifyWindowsInstallerSignature(Path installer, Path temporaryDirectory) throws IOException {
+        String escapedPath = installer.toAbsolutePath().toString().replace("'", "''");
+        String verifyCommand = "$signature = Get-AuthenticodeSignature -LiteralPath '"
+                + escapedPath + "'; "
+                + "if ($signature.Status -ne 'Valid' -or "
+                + "$signature.SignerCertificate.Subject -notmatch 'The Document Foundation') { exit 1 }";
+        runProcess(List.of("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", verifyCommand),
+                temporaryDirectory.resolve("signature.log"), Duration.ofMinutes(2),
+                "The downloaded LibreOffice installer failed publisher signature verification.");
     }
 
     private HttpRequest downloadingRequest(URI uri) {
@@ -234,7 +405,7 @@ public class LibreOfficeManager {
     }
 
     private Path installDirectory() {
-        return Path.of(System.getProperty("user.home"), ".tailor-resume", "tools");
+        return Path.of(userHome, ".tailor-resume", "tools");
     }
 
     private void deleteTree(Path directory) throws IOException {
