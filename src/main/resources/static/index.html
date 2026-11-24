@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4ef">
+  <title>Tailor — Resume editor</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Tailor home">
+      <span class="brand-mark">t</span>
+      <span>tailor<span class="brand-period">.</span></span>
+    </a>
+    <div class="local-badge"><span></span> Private and local</div>
+  </header>
+
+  <main>
+    <section class="intro">
+      <p class="eyebrow">YOUR EXPERIENCE, THEIR OPPORTUNITY</p>
+      <h1>A resume that fits<br>the <span>next opportunity.</span></h1>
+      <p class="intro-copy">Bring your resume and a job description. Your local AI will help you put your most relevant experience forward.</p>
+    </section>
+
+    <form id="tailor-form">
+      <section class="briefing">
+        <div class="upload-panel">
+          <label class="field-label" for="resume-file">01 <span>Your resume</span></label>
+          <label class="dropzone" id="dropzone" for="resume-file">
+            <input id="resume-file" name="resume" type="file" accept=".pdf,.docx,.txt">
+            <span class="upload-icon" aria-hidden="true">↑</span>
+            <span class="upload-title" id="upload-title">Drop your resume here</span>
+            <span class="upload-hint" id="upload-hint">or browse files · DOCX keeps original formatting</span>
+          </label>
+        </div>
+        <div class="description-panel">
+          <label class="field-label" for="job-description">02 <span>The job description</span></label>
+          <textarea id="job-description" name="jobDescription" maxlength="30000" placeholder="Paste the role, responsibilities, and qualifications here…" required></textarea>
+          <div class="textarea-footer"><span>Keep it real. Your AI won't invent experience.</span><span id="description-count">0 / 30,000</span></div>
+        </div>
+        <button class="tailor-button" id="tailor-button" type="submit" disabled>
+          <span id="button-label">Tailor my resume</span><span aria-hidden="true">↗</span>
+        </button>
+      </section>
+    </form>
+
+    <section class="editor-section" aria-label="Resume comparison">
+      <div class="editor-heading">
+        <div>
+          <p class="eyebrow">THE EDITOR</p>
+          <h2>Your story, thoughtfully reframed.</h2>
+        </div>
+        <button class="download-button" id="download-button" type="button" disabled><span aria-hidden="true">↓</span> Download PDF</button>
+      </div>
+      <div class="comparison">
+        <article class="resume-card">
+          <div class="card-heading"><span class="status-dot original-dot"></span><span>Original</span><span class="card-caption" id="original-caption">Waiting for your resume</span></div>
+          <pre class="resume-text empty" id="original-text">Your resume will appear here when you upload it.</pre>
+        </article>
+        <article class="resume-card tailored-card">
+          <div class="card-heading"><span class="status-dot tailored-dot"></span><span>Tailored</span><span class="card-caption" id="tailored-caption">Ready when you are</span></div>
+          <pre class="resume-text empty" id="tailored-text">Your tailored version will take shape here.</pre>
+        </article>
+      </div>
+      <p class="privacy-note"><span aria-hidden="true">◈</span> Upload the original DOCX to preserve its layout in the PDF export. PDF and TXT files can be tailored, but their design cannot be safely edited in place. On first macOS launch, LibreOffice setup begins automatically in the background. Review the tailored version for accuracy before applying.</p>
+    </section>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
