@@ -94,7 +94,8 @@ public class ResumeController {
     @PostMapping(value = "/export", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> export(
             @RequestParam("resume") MultipartFile resume,
-            @RequestParam("tailoredText") String tailoredText) throws IOException {
+            @RequestParam("tailoredText") String tailoredText,
+            @RequestParam(value = "jobDescription", required = false) String jobDescription) throws IOException {
         if (tailoredText == null || tailoredText.isBlank()) {
             throw new IllegalArgumentException("There is no tailored resume to export.");
         }
@@ -109,7 +110,9 @@ public class ResumeController {
         byte[] pdf = pdfService.convertDocxToPdf(updatedDocx);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        ContentDisposition.attachment().filename("tailored-resume.pdf").build().toString())
+                        ContentDisposition.attachment()
+                                .filename(JobDescriptionCompanyExtractor.filenameFor(jobDescription))
+                                .build().toString())
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdf);
     }

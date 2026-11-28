@@ -27,6 +27,116 @@ function showToast(message) {
   toastTimer = setTimeout(() => toast.classList.remove("visible"), 4500);
 }
 
+function resumeLines(text) {
+  return text.match(/[^\n]*\n|[^\n]+$/g) || [];
+}
+
+function appendChangedLine(fragment, originalLine, tailoredLine) {
+  const originalCharacters = [...originalLine];
+  const tailoredCharacters = [...tailoredLine];
+  let prefixLength = 0;
+  while (prefixLength < originalCharacters.length
+      && prefixLength < tailoredCharacters.length
+      && originalCharacters[prefixLength] === tailoredCharacters[prefixLength]) {
+    prefixLength++;
+  }
+  let suffixLength = 0;
+  while (suffixLength < originalCharacters.length - prefixLength
+      && suffixLength < tailoredCharacters.length - prefixLength
+      && originalCharacters[originalCharacters.length - 1 - suffixLength]
+        === tailoredCharacters[tailoredCharacters.length - 1 - suffixLength]) {
+    suffixLength++;
+  }
+
+  fragment.append(document.createTextNode(originalCharacters.slice(0, prefixLength).join("")));
+  const removed = document.createElement("del");
+  removed.textContent = originalCharacters
+    .slice(prefixLength, originalCharacters.length - suffixLength).join("");
+  fragment.append(removed);
+  const added = document.createElement("ins");
+  added.textContent = tailoredCharacters
+    .slice(prefixLength, tailoredCharacters.length - suffixLength).join("");
+  fragment.append(added);
+  if (suffixLength) {
+    fragment.append(document.createTextNode(originalCharacters.slice(-suffixLength).join("")));
+  }
+}
+
+function renderResumeDiff(original, tailored) {
+  const originalLines = resumeLines(original);
+  const tailoredLines = resumeLines(tailored);
+  const fragment = document.createDocumentFragment();
+  const columns = tailoredLines.length + 1;
+  const cellCount = (originalLines.length + 1) * columns;
+
+  if (cellCount > 1_000_000) {
+    const removed = document.createElement("del");
+    removed.textContent = original;
+    fragment.append(removed);
+    const added = document.createElement("ins");
+    added.textContent = tailored;
+    fragment.append(added);
+    tailoredText.replaceChildren(fragment);
+    return;
+  }
+
+  const common = new Uint32Array(cellCount);
+  for (let originalIndex = originalLines.length - 1; originalIndex >= 0; originalIndex--) {
+    for (let tailoredIndex = tailoredLines.length - 1; tailoredIndex >= 0; tailoredIndex--) {
+      const cell = originalIndex * columns + tailoredIndex;
+      common[cell] = originalLines[originalIndex] === tailoredLines[tailoredIndex]
+        ? common[(originalIndex + 1) * columns + tailoredIndex + 1] + 1
+        : Math.max(common[(originalIndex + 1) * columns + tailoredIndex],
+          common[originalIndex * columns + tailoredIndex + 1]);
+    }
+  }
+
+  let originalIndex = 0;
+  let tailoredIndex = 0;
+  while (originalIndex < originalLines.length || tailoredIndex < tailoredLines.length) {
+    if (originalIndex < originalLines.length && tailoredIndex < tailoredLines.length
+        && originalLines[originalIndex] === tailoredLines[tailoredIndex]) {
+      fragment.append(document.createTextNode(originalLines[originalIndex]));
+      originalIndex++;
+      tailoredIndex++;
+      continue;
+    }
+
+    const removedLines = [];
+    const addedLines = [];
+    while (originalIndex < originalLines.length || tailoredIndex < tailoredLines.length) {
+      if (originalIndex < originalLines.length && tailoredIndex < tailoredLines.length
+          && originalLines[originalIndex] === tailoredLines[tailoredIndex]) break;
+      const removeNext = originalIndex < originalLines.length
+        && (tailoredIndex >= tailoredLines.length
+          || common[(originalIndex + 1) * columns + tailoredIndex]
+            >= common[originalIndex * columns + tailoredIndex + 1]);
+      if (removeNext) {
+        removedLines.push(originalLines[originalIndex++]);
+      } else {
+        addedLines.push(tailoredLines[tailoredIndex++]);
+      }
+    }
+
+    const pairedLines = Math.min(removedLines.length, addedLines.length);
+    for (let lineIndex = 0; lineIndex < pairedLines; lineIndex++) {
+      appendChangedLine(fragment, removedLines[lineIndex], addedLines[lineIndex]);
+    }
+    for (let lineIndex = pairedLines; lineIndex < removedLines.length; lineIndex++) {
+      const removed = document.createElement("del");
+      removed.textContent = removedLines[lineIndex];
+      fragment.append(removed);
+    }
+    for (let lineIndex = pairedLines; lineIndex < addedLines.length; lineIndex++) {
+      const added = document.createElement("ins");
+      added.textContent = addedLines[lineIndex];
+      fragment.append(added);
+    }
+  }
+
+  tailoredText.replaceChildren(fragment);
+}
+
 function updateReadyState() {
   const missingApiKey = providerSelect.value === "openai" && !apiKeyInput.value.trim();
   tailorButton.disabled = !fileInput.files[0] || !jobDescription.value.trim() || !resumeText || missingApiKey;
@@ -185,7 +295,7 @@ form.addEventListener("submit", async (event) => {
     if (!tailoredResume.trim() || !result.preview?.trim()) {
       throw new Error("The AI provider returned an empty resume. Please try again.");
     }
-    tailoredText.textContent = result.preview;
+    renderResumeDiff(resumeText, result.preview);
     tailoredText.classList.remove("empty");
     tailoredCaption.textContent = resumeIsDocx ? "Ready to download" : "Original DOCX required for export";
     tailoringSucceeded = true;
@@ -214,12 +324,14 @@ downloadButton.addEventListener("click", async () => {
     const body = new FormData();
     body.append("resume", fileInput.files[0]);
     body.append("tailoredText", tailoredResume);
+    body.append("jobDescription", jobDescription.value.trim());
     const response = await fetch("/api/export", { method: "POST", body });
     if (!response.ok) throw new Error(await errorMessage(response));
     const url = URL.createObjectURL(await response.blob());
     const link = document.createElement("a");
     link.href = url;
-    link.download = "tailored-resume.pdf";
+    const disposition = response.headers.get("content-disposition") || "";
+    link.download = disposition.match(/filename="?([^";]+)"?/i)?.[1] || "tailored-resume.pdf";
     link.click();
     URL.revokeObjectURL(url);
   } catch (error) {
